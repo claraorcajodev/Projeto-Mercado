@@ -7,6 +7,10 @@ const PORT = 3000;
 
 // Middleware para aceitar JSON no corpo das requisições
 app.use(express.json());
+app.use((req, res, next) => {
+  console.log(`${req.method} ${req.url}`);
+  next();
+});
 
 // Simulação de banco de dados em memória
 let produtos = []
@@ -32,35 +36,61 @@ function validarRequisicao(req, res, next)
  */
 
 app.get('/produtos', (req, res) => 
-        {
-        res.json(produtos);
-        });
+{
+  let resultado = [...produtos]; // cópia para evitar efeitos colaterais
+
+  // Filtro por nome
+
+  if (req.query.nome) {
+    resultado = resultado.filter(p =>
+      p.nome.toLowerCase().includes(req.query.nome.toLowerCase())
+    );
+  }
+
+  // Paginação
+
+  const page = parseInt(req.query.page) || 1;
+  const limit = parseInt(req.query.limit) || 10;
+  const start = (page - 1) * limit;
+  const end = start + limit;
+  const paginatedProdutos = resultado.slice(start, end);
+
+  res.json({
+    total: resultado.length,
+    page,
+    limit,
+    produtos: paginatedProdutos,
+  });
+});
 
 /**
- * Rota POST /produtos
- * Cria um novo produto com validacao de entrada
+ * Rota GET /produtos/:id
+ * Retorna um produto específico pelo ID
  */
 
-app.post(
-    '/produtos',
-        [
-        body('nome').notEmpty().withMessage('Nome é obrigatório'),
-        body('preco')
-        .isFloat({gt: 0})
-        .withMessage('Preço deve ser um número maior que zero'),
-        validarRequisicao,  
-        ],
-        (req, res) => 
-        {
-        res.json(produtos);
-        }
-    );
-    
+app.get('/produtos/:id', (req, res) => 
+{
+  const id = parseInt(req.params.id);
+  if (isNaN(id)) {
+    return res.status(400).json({ mensagem: 'ID inválido' });
+  }
+  const produto = produtos.find(p => p.id === id);
+
+  if (!produto) {
+    return res.status(404).json({ mensagem: 'Produto não encontrado' });
+  }
+
+  res.json(produto);
+});
+
+
 /**
  * Rota POST /produtos
  * Cria um novo produto com validação de entrada
  */
-app.post(
+
+app.post
+(
   '/produtos',
   [
     body('nome').notEmpty().withMessage('Nome é obrigatório'),
@@ -81,18 +111,24 @@ app.post(
  * Rota PUT /produtos/:id
  * Atualiza um produto existente com validação
  */
-app.put(
+app.put
+(
   '/produtos/:id',
   [
-    body('nome').optional().notEmpty().withMessage('Nome não pode ser vazio'),
+    body('nome')
+    .optional()
+    .trim()
+    .notEmpty()
+    .withMessage('Nome não pode ser vazio'),
     body('preco')
       .optional()
       .isFloat({ gt: 0 })
       .withMessage('Preço deve ser um número maior que zero'),
     validarRequisicao,
   ],
+
   (req, res) => {
-    const { id } = req.params;
+    const id = parseInt(req.params.id, 10);
     const { nome, preco } = req.body;
     const produto = produtos.find(p => p.id === parseInt(id));
 
@@ -101,8 +137,7 @@ app.put(
     }
 
     if (nome) produto.nome = nome;
-    if (preco) produto.preco = preco;
-
+    if (preco !== undefined) produto.preco = Number(preco);
     res.json(produto);
   }
 );
